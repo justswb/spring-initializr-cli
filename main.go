@@ -406,6 +406,16 @@ func run() (int, error) {
 		}
 	}
 
+	// The built command is run at the end, so fail before any prompts if the Spring CLI is missing.
+	// LookPath also finds spring.cmd / spring.bat on Windows (via PATHEXT).
+	if !dryRun {
+		if _, err := exec.LookPath("spring"); err != nil {
+			return 1, errors.New("Spring Boot CLI (spring) was not found on PATH.\n" +
+				"Install it, e.g. `sdk install springboot` or see https://docs.spring.io/spring-boot/installing.html,\n" +
+				"or run with --dry-run to only print the command.")
+		}
+	}
+
 	meta, err := fetchMetadata(target)
 	if err != nil {
 		return 1, err

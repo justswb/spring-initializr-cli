@@ -378,6 +378,10 @@ func TestRunsSpringInit(t *testing.T) {
 
 // withPath returns the environment with dir prepended to PATH (matched case-insensitively for Windows).
 func withPath(dir string) []string {
+	return replacePath(func(path string) string { return dir + string(os.PathListSeparator) + path })
+}
+
+func replacePath(f func(path string) string) []string {
 	var env []string
 	path := ""
 	for _, kv := range os.Environ() {
@@ -387,7 +391,28 @@ func withPath(dir string) []string {
 		}
 		env = append(env, kv)
 	}
-	return append(env, "PATH="+dir+string(os.PathListSeparator)+path)
+	return append(env, "PATH="+f(path))
+}
+
+func TestFailsEarlyWithoutSpringCLI(t *testing.T) {
+	env := replacePath(func(string) string { return t.TempDir() }) // PATH with no spring on it
+	cmd := exec.Command(bin, "--target", target)
+	cmd.Env = env
+	cmd.Stdin = strings.NewReader("")
+	out, _ := cmd.CombinedOutput()
+	if code := cmd.ProcessState.ExitCode(); code != 1 || !strings.Contains(string(out), "Spring Boot CLI (spring) was not found") {
+		t.Fatalf("exit %d, output %q", code, out)
+	}
+	if !strings.Contains(string(out), "--dry-run") {
+		t.Errorf("error should mention --dry-run: %q", out)
+	}
+}
+
+func TestDryRunDoesNotNeedSpringCLI(t *testing.T) {
+	c := start(t, replacePath(func(string) string { return t.TempDir() }), "--dry-run")
+	c.acceptRest("Project type")
+	expectExit(t, c, 0)
+	expectCommand(t, c, defaultCommand())
 }
 
 // runPiped runs the CLI without a terminal (piped stdio) and returns its exit code and stderr.
