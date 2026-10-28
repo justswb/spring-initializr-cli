@@ -41,11 +41,11 @@ jobs:
   release:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0 # full history and tags, to find the latest version
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
 
@@ -90,7 +90,7 @@ jobs:
 
       - name: Keep exe as workflow artifact (dry run)
         if: steps.version.outputs.publish != 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: spring-init-${{ steps.version.outputs.tag }}-dry-run
           path: dist/spring-init.exe
@@ -98,7 +98,7 @@ jobs:
       # Creates the tag on this commit (if new) and the release, with the exe attached.
       - name: Publish release
         if: steps.version.outputs.publish == 'true'
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ steps.version.outputs.tag }}
           target_commitish: ${{ github.sha }}
