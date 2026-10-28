@@ -21,9 +21,9 @@ function Norm($dir) { $dir.Trim().TrimEnd('\').ToLowerInvariant() }
 # Raw user PATH, as stored in the registry (not expanded).
 function UserPath { (Get-Item 'HKCU:\Environment').GetValue('Path', '', 'DoNotExpandEnvironmentNames') }
 
-function OtherEntries { @(UserPath -split ';' | Where-Object { $_.Trim() -ne '' -and (Norm $_) -ne (Norm $InstallDir) }) -join ';' }
+function OtherEntries { @((UserPath) -split ';' | Where-Object { $_.Trim() -ne '' -and (Norm $_) -ne (Norm $InstallDir) }) -join ';' }
 
-function PathCount { @(UserPath -split ';' | Where-Object { (Norm $_) -eq (Norm $InstallDir) }).Count }
+function PathCount { @((UserPath) -split ';' | Where-Object { (Norm $_) -eq (Norm $InstallDir) }).Count }
 
 # Runs install.ps1 in a fresh process, like `irm ... | iex` would in a new shell.
 function Install([string[]] $extra) {
