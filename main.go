@@ -2,6 +2,9 @@
 //
 // Usage: spring-init [--target URL] [--dry-run]
 //
+// Build: go build -trimpath -ldflags="-s -w" -o dist/spring-init.exe .
+// Test:  go test ./...
+//
 // Runs the built command by default; --dry-run only prints it.
 package main
 

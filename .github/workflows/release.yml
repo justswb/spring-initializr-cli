@@ -18,17 +18,13 @@ jobs:
         with:
           go-version-file: go.mod
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-
       - name: Build spring-init.exe
-        run: npm run build
+        run: go build -trimpath -ldflags="-s -w" -o dist/spring-init.exe .
 
       - name: Test spring-init.exe
-        run: |
-          npm ci
-          npm test
+        run: go test -v ./...
+        env:
+          SPRING_INIT_BIN: dist/spring-init.exe
 
       - name: Publish release
         uses: softprops/action-gh-release@v2
