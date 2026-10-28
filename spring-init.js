@@ -15,7 +15,8 @@ const green = (s) => `${ESC}32m${s}${ESC}0m`;
 const clear = () => process.stdout.write(`${ESC}2J${ESC}H`);
 const PAGE = Math.max(5, (process.stdout.rows || 24) - 8);
 const BACK = Symbol('back');
-const BACK_HINT = dim('  esc: previous step');
+let canGoBack = false; // set per step by main(); the first step has no previous step
+const backHint = () => (canGoBack ? dim('  esc: previous step') : '');
 
 // Runs a prompt: `render()` draws it, `onKey(str, key)` returns a value to resolve or undefined to keep going.
 // Esc resolves with BACK so the caller can return to the previous step.
@@ -27,6 +28,7 @@ function prompt(render, onKey) {
         process.stdout.write('\n');
         process.exit(130);
       }
+      if (key.name === 'escape' && !canGoBack) return;
       const result = key.name === 'escape' ? BACK : onKey(str, key);
       if (result !== undefined) {
         process.stdin.off('keypress', handler);
@@ -51,7 +53,7 @@ function select(title, items, defaultId, current) {
   let cursor = Math.max(0, items.findIndex((i) => i.id === (current ?? defaultId)));
   return prompt(
     () => {
-      console.log(cyan(`? ${title}`) + dim('  (↑/↓, enter)') + BACK_HINT);
+      console.log(cyan(`? ${title}`) + dim('  (↑/↓, enter)') + backHint());
       const { start, slice } = window(items, cursor);
       slice.forEach((item, i) => {
         const idx = start + i;
@@ -70,7 +72,7 @@ function select(title, items, defaultId, current) {
 function text(title, def = '', current = '') {
   let value = current;
   return prompt(
-    () => process.stdout.write(cyan(`? ${title}`) + (def ? dim(` (${def})`) : '') + BACK_HINT + '\n> ' + value),
+    () => process.stdout.write(cyan(`? ${title}`) + (def ? dim(` (${def})`) : '') + backHint() + '\n> ' + value),
     (str, key) => {
       if (key.name === 'return') return value.trim() || def;
       if (key.name === 'backspace') value = value.slice(0, -1);
@@ -90,7 +92,7 @@ function multiSelect(title, items, current = []) {
   return prompt(
     () => {
       const list = visible();
-      console.log(cyan(`? ${title}`) + dim('  (type to filter, ↑/↓, space toggle, enter done)') + BACK_HINT);
+      console.log(cyan(`? ${title}`) + dim('  (type to filter, ↑/↓, space toggle, enter done)') + backHint());
       console.log(`  filter: ${filter}${dim('_')}`);
       console.log(`  selected: ${green([...chosen].join(', ') || '-')}\n`);
       const { start, slice } = window(list, cursor);
@@ -153,6 +155,7 @@ async function main() {
   ];
   for (let i = 0; i < steps.length; ) {
     const [key, ask] = steps[i];
+    canGoBack = i > 0;
     const answer = await ask();
     if (answer === BACK) {
       i = Math.max(0, i - 1);
