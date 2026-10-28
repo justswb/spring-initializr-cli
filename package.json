@@ -2,6 +2,11 @@
   "name": "spring-initializr-cli",
   "version": "1.0.0",
   "description": "Interactively select Spring Initializr options and build a spring init command",
-  "bin": { "spring-init": "spring-init.js" },
-  "license": "MIT"
+  "bin": {
+    "spring-init": "spring-init.js"
+  },
+  "license": "MIT",
+  "scripts": {
+    "build": "node --experimental-sea-config sea-config.json && node -e \"require('fs').copyFileSync(process.execPath, 'dist/spring-init.exe')\" && npx --yes postject dist/spring-init.exe NODE_SEA_BLOB dist/sea-prep.blob --sentinel-fuse NODE_SEA_FUSE_fce680ab2cc467b6e072b8b5df1996b2"
+  }
 }
