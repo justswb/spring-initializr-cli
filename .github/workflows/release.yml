@@ -15,6 +15,8 @@ on:
       - go.mod
       - go.sum
       - testdata/**
+      - install.ps1
+      - install_test.ps1
       - .github/workflows/release.yml
   workflow_dispatch:
     inputs:
@@ -88,6 +90,11 @@ jobs:
         run: go test -v ./...
         env:
           SPRING_INIT_BIN: dist/spring-init.exe
+
+      # Installs the built exe with install.ps1 on the runner, then updates and uninstalls it, checking
+      # the user PATH each time.
+      - name: Test install script
+        run: ./install_test.ps1 -Exe dist/spring-init.exe -ExpectedVersion ${{ steps.version.outputs.tag }}
 
       - name: Keep exe as workflow artifact (dry run)
         if: steps.version.outputs.publish != 'true'
