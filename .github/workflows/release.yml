@@ -1,18 +1,49 @@
 name: Release
 
-# Push a tag like v1.0.0 to build spring-init.exe, test it, and publish it on a GitHub release for that tag.
+# Every push to master that touches the code builds and tests spring-init.exe, then tags the next
+# patch version (v2.0.0 -> v2.0.1) and publishes it as a GitHub release.
+# "Run workflow" does the same with a chosen bump (patch, minor or major).
+# Pushing a v* tag by hand releases that exact version.
+# Dry run: pushes to any other branch, or "Run workflow" with dry run ticked, do everything except
+# publishing; they report the version they would release and keep the exe as a workflow artifact.
 on:
   push:
+    branches: ['**']
     tags: ['v*']
+    paths:
+      - '**.go'
+      - go.mod
+      - go.sum
+      - testdata/**
+      - .github/workflows/release.yml
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: Version part to increase
+        type: choice
+        options: [patch, minor, major]
+        default: patch
+      dry_run:
+        description: Dry run (build, test and pick the version, but do not tag or release)
+        type: boolean
+        default: false
 
 permissions:
   contents: write
 
+# Run releases one at a time so two pushes never compute the same next version; dry runs on other
+# branches get their own group.
+concurrency:
+  group: ${{ (github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/')) && 'release' || github.ref }}
+  cancel-in-progress: false
+
 jobs:
-  build-windows:
+  release:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # full history and tags, to find the latest version
 
       - uses: actions/setup-go@v5
         with:
@@ -26,9 +57,50 @@ jobs:
         env:
           SPRING_INIT_BIN: dist/spring-init.exe
 
+      - name: Pick version
+        id: version
+        shell: bash
+        env:
+          BUMP: ${{ inputs.bump || 'patch' }}
+          PUBLISH: ${{ !inputs.dry_run && (github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/v')) }}
+        run: |
+          # Only plain vX.Y.Z tags count as versions (pre-releases like v2.1.0-rc1 are ignored).
+          versions() { git tag "$@" --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -n1; }
+          # Reuse a version tag already on this commit (manual tag push, or a re-run).
+          tag=$(versions --points-at HEAD)
+          if [ -z "$tag" ]; then
+            latest=$(versions)
+            if [ -z "$latest" ]; then
+              # First release: v0.1.0 (or v1.0.0 when a major bump is asked for).
+              [ "$BUMP" = major ] && tag=v1.0.0 || tag=v0.1.0
+            else
+              IFS=. read -r major minor patch <<< "${latest#v}"
+              case "$BUMP" in
+                major) tag="v$((major + 1)).0.0" ;;
+                minor) tag="v${major}.$((minor + 1)).0" ;;
+                *)     tag="v${major}.${minor}.$((patch + 1))" ;;
+              esac
+            fi
+          fi
+          if [ "$PUBLISH" = true ]; then msg="Releasing $tag"; else msg="Dry run: would release $tag (bump: $BUMP)"; fi
+          echo "$msg"
+          echo "### $msg" >> "$GITHUB_STEP_SUMMARY"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "publish=$PUBLISH" >> "$GITHUB_OUTPUT"
+
+      - name: Keep exe as workflow artifact (dry run)
+        if: steps.version.outputs.publish != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: spring-init-${{ steps.version.outputs.tag }}-dry-run
+          path: dist/spring-init.exe
+
+      # Creates the tag on this commit (if new) and the release, with the exe attached.
       - name: Publish release
+        if: steps.version.outputs.publish == 'true'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_name }}
+          tag_name: ${{ steps.version.outputs.tag }}
+          target_commitish: ${{ github.sha }}
           generate_release_notes: true
           files: dist/spring-init.exe
