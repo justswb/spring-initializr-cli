@@ -7,6 +7,11 @@
   },
   "license": "MIT",
   "scripts": {
-    "build": "node --experimental-sea-config sea-config.json && node -e \"require('fs').copyFileSync(process.execPath, 'dist/spring-init.exe')\" && npx --yes postject dist/spring-init.exe NODE_SEA_BLOB dist/sea-prep.blob --sentinel-fuse NODE_SEA_FUSE_fce680ab2cc467b6e072b8b5df1996b2"
+    "build": "node --experimental-sea-config sea-config.json && node -e \"require('fs').copyFileSync(process.execPath, 'dist/spring-init.exe')\" && npx --yes postject dist/spring-init.exe NODE_SEA_BLOB dist/sea-prep.blob --sentinel-fuse NODE_SEA_FUSE_fce680ab2cc467b6e072b8b5df1996b2",
+    "test": "node --test test/*.test.js"
+  },
+  "devDependencies": {
+    "@lydell/node-pty": "^1.2.0-beta.18",
+    "@xterm/headless": "^6.0.0"
   }
 }
