@@ -29,6 +29,8 @@ Download `spring-init.exe` from [Releases](https://github.com/justswb/spring-ini
 spring-init                # choose options, then run `spring init ...`
 spring-init --dry-run      # only print the command
 spring-init --target URL   # use another Initializr service
+spring-init --version      # print the version (also -v)
+spring-init --help         # print usage (also -h)
 ```
 
 ## Build

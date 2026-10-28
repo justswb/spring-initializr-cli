@@ -443,3 +443,51 @@ func TestFetchFailure(t *testing.T) {
 		t.Fatalf("exit %d, stderr %q", code, stderr)
 	}
 }
+
+// runBare runs bin with piped stdio, no spring on PATH and an unreachable target, so the flag
+// under test must be handled before the Spring CLI check, the metadata fetch and the terminal check.
+func runBare(t *testing.T, bin string, args ...string) (int, string) {
+	t.Helper()
+	cmd := exec.Command(bin, append([]string{"--target", "http://127.0.0.1:1"}, args...)...)
+	cmd.Env = replacePath(func(string) string { return t.TempDir() })
+	cmd.Stdin = strings.NewReader("")
+	out, err := cmd.CombinedOutput()
+	var exitErr *exec.ExitError
+	if err != nil && !errors.As(err, &exitErr) {
+		t.Fatal(err)
+	}
+	return cmd.ProcessState.ExitCode(), string(out)
+}
+
+func TestVersion(t *testing.T) {
+	for _, flag := range []string{"--version", "-v"} {
+		code, out := runBare(t, bin, flag)
+		if code != 0 || !regexp.MustCompile(`^spring-init \S+\r?\n$`).MatchString(out) {
+			t.Errorf("%s: exit %d, output %q", flag, code, out)
+		}
+	}
+}
+
+func TestVersionSetAtBuildTime(t *testing.T) {
+	versioned := filepath.Join(t.TempDir(), "spring-init"+exeSuffix())
+	if out, err := exec.Command("go", "build", "-ldflags=-X main.version=v9.9.9", "-o", versioned, ".").CombinedOutput(); err != nil {
+		t.Fatalf("go build failed: %v\n%s", err, out)
+	}
+	if code, out := runBare(t, versioned, "--version"); code != 0 || strings.TrimSpace(out) != "spring-init v9.9.9" {
+		t.Fatalf("exit %d, output %q", code, out)
+	}
+}
+
+func TestHelp(t *testing.T) {
+	for _, flag := range []string{"--help", "-h"} {
+		code, out := runBare(t, bin, flag)
+		if code != 0 {
+			t.Errorf("%s: exit %d, output %q", flag, code, out)
+		}
+		for _, want := range []string{"Usage:", "--target", "--dry-run", "--version", "--help"} {
+			if !strings.Contains(out, want) {
+				t.Errorf("%s: output should mention %s: %q", flag, want, out)
+			}
+		}
+	}
+}

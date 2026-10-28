@@ -1,11 +1,12 @@
 // Command spring-init interactively selects Spring Initializr options and builds a `spring init` command.
 //
-// Usage: spring-init [--target URL] [--dry-run]
+// Usage: spring-init [--target URL] [--dry-run] [--version] [--help]
 //
 // Build: go build -trimpath -ldflags="-s -w" -o dist/spring-init.exe .
 // Test:  go test ./...
 //
 // Runs the built command by default; --dry-run only prints it.
+// --version (-v) and --help (-h) print and exit; releases set the version with -ldflags "-X main.version=vX.Y.Z".
 package main
 
 import (
@@ -21,6 +22,19 @@ import (
 )
 
 const defaultTarget = "https://start.spring.io"
+
+// version is set at build time with -ldflags "-X main.version=vX.Y.Z".
+var version = "dev"
+
+const usage = `Usage: spring-init [--target URL] [--dry-run]
+
+Interactively choose Spring Initializr options, then run the matching ` + "`spring init`" + ` command.
+
+  --target URL   use another Initializr service (default ` + defaultTarget + `)
+  --dry-run      only print the command
+  -v, --version  print the version
+  -h, --help     print this help
+`
 
 const esc = "\x1b["
 
@@ -403,6 +417,12 @@ func run() (int, error) {
 			}
 		case "--dry-run":
 			dryRun = true
+		case "--version", "-v":
+			fmt.Println("spring-init " + version)
+			return 0, nil
+		case "--help", "-h":
+			fmt.Print(usage)
+			return 0, nil
 		}
 	}
 

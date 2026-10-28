@@ -49,14 +49,6 @@ jobs:
         with:
           go-version-file: go.mod
 
-      - name: Build spring-init.exe
-        run: go build -trimpath -ldflags="-s -w" -o dist/spring-init.exe .
-
-      - name: Test spring-init.exe
-        run: go test -v ./...
-        env:
-          SPRING_INIT_BIN: dist/spring-init.exe
-
       - name: Pick version
         id: version
         shell: bash
@@ -88,6 +80,14 @@ jobs:
           echo "### $msg" >> "$GITHUB_STEP_SUMMARY"
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
           echo "publish=$PUBLISH" >> "$GITHUB_OUTPUT"
+
+      - name: Build spring-init.exe
+        run: go build -trimpath -ldflags="-s -w -X main.version=${{ steps.version.outputs.tag }}" -o dist/spring-init.exe .
+
+      - name: Test spring-init.exe
+        run: go test -v ./...
+        env:
+          SPRING_INIT_BIN: dist/spring-init.exe
 
       - name: Keep exe as workflow artifact (dry run)
         if: steps.version.outputs.publish != 'true'
