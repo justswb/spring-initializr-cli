@@ -7,8 +7,19 @@ Pick project type, language, Boot/Java versions, coordinates and dependencies wi
 ## Tech stack
 
 - **Go 1.27+** (with `golang.org/x/term`)
-- **Spring Boot CLI** (`spring`), needed at runtime unless you pass `--dry-run`
+- **Spring Boot CLI** (`spring`) **2.6 or later**, needed at runtime unless you pass `--dry-run`
 - **GitHub Actions** for build, test and release
+
+## Supported Spring Boot CLI versions
+
+| Spring Boot CLI | Supported |
+|---|---|
+| 4.x | ✅ |
+| 3.x | ✅ |
+| 2.6 – 2.7 | ✅ |
+| 2.5 and older | ❌ `spring init` there uses `--groupId` / `--artifactId` instead of `--group-id` / `--artifact-id` |
+
+Install: `sdk install springboot`, or see the [installation guide](https://docs.spring.io/spring-boot/installing.html).
 
 ## Usage
 
