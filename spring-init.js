@@ -14,8 +14,11 @@ const cyan = (s) => `${ESC}36m${s}${ESC}0m`;
 const green = (s) => `${ESC}32m${s}${ESC}0m`;
 const clear = () => process.stdout.write(`${ESC}2J${ESC}H`);
 const PAGE = Math.max(5, (process.stdout.rows || 24) - 8);
+const BACK = Symbol('back');
+const BACK_HINT = dim('  esc: previous step');
 
 // Runs a prompt: `render()` draws it, `onKey(str, key)` returns a value to resolve or undefined to keep going.
+// Esc resolves with BACK so the caller can return to the previous step.
 function prompt(render, onKey) {
   return new Promise((resolve) => {
     const handler = (str, key = {}) => {
@@ -24,7 +27,7 @@ function prompt(render, onKey) {
         process.stdout.write('\n');
         process.exit(130);
       }
-      const result = onKey(str, key);
+      const result = key.name === 'escape' ? BACK : onKey(str, key);
       if (result !== undefined) {
         process.stdin.off('keypress', handler);
         resolve(result);
@@ -44,11 +47,11 @@ function window(items, cursor) {
   return { start, slice: items.slice(start, start + PAGE) };
 }
 
-function select(title, items, defaultId) {
-  let cursor = Math.max(0, items.findIndex((i) => i.id === defaultId));
+function select(title, items, defaultId, current) {
+  let cursor = Math.max(0, items.findIndex((i) => i.id === (current ?? defaultId)));
   return prompt(
     () => {
-      console.log(cyan(`? ${title}`) + dim('  (↑/↓, enter)'));
+      console.log(cyan(`? ${title}`) + dim('  (↑/↓, enter)') + BACK_HINT);
       const { start, slice } = window(items, cursor);
       slice.forEach((item, i) => {
         const idx = start + i;
@@ -64,10 +67,10 @@ function select(title, items, defaultId) {
   );
 }
 
-function text(title, def = '') {
-  let value = '';
+function text(title, def = '', current = '') {
+  let value = current;
   return prompt(
-    () => process.stdout.write(cyan(`? ${title}`) + (def ? dim(` (${def})`) : '') + ': ' + value),
+    () => process.stdout.write(cyan(`? ${title}`) + (def ? dim(` (${def})`) : '') + BACK_HINT + '\n> ' + value),
     (str, key) => {
       if (key.name === 'return') return value.trim() || def;
       if (key.name === 'backspace') value = value.slice(0, -1);
@@ -76,10 +79,10 @@ function text(title, def = '') {
   );
 }
 
-function multiSelect(title, items) {
+function multiSelect(title, items, current = []) {
   let filter = '';
   let cursor = 0;
-  const chosen = new Set();
+  const chosen = new Set(current);
   const visible = () => {
     const f = filter.toLowerCase();
     return items.filter((i) => !f || `${i.id} ${i.name} ${i.group}`.toLowerCase().includes(f));
@@ -87,7 +90,7 @@ function multiSelect(title, items) {
   return prompt(
     () => {
       const list = visible();
-      console.log(cyan(`? ${title}`) + dim('  (type to filter, ↑/↓, space toggle, enter done)'));
+      console.log(cyan(`? ${title}`) + dim('  (type to filter, ↑/↓, space toggle, enter done)') + BACK_HINT);
       console.log(`  filter: ${filter}${dim('_')}`);
       console.log(`  selected: ${green([...chosen].join(', ') || '-')}\n`);
       const { start, slice } = window(list, cursor);
@@ -132,21 +135,34 @@ async function main() {
 
   const opts = {};
   const types = meta.type.values.filter((v) => v.action === '/starter.zip');
-  opts.type = await select('Project type', types, meta.type.default);
-  for (const key of ['language', 'bootVersion', 'packaging', 'javaVersion']) {
-    opts[key] = await select(key, meta[key].values, meta[key].default);
-  }
-  opts.groupId = await text('groupId', meta.groupId.default);
-  opts.artifactId = await text('artifactId', meta.artifactId.default);
-  opts.name = await text('name', opts.artifactId);
-  opts.description = await text('description', meta.description.default || 'Demo project for Spring Boot');
-  opts.packageName = await text('packageName', `${opts.groupId}.${opts.artifactId}`.replace(/[^\w.]/g, ''));
-  opts.version = await text('version', meta.version.default);
-
   const deps = meta.dependencies.values.flatMap((g) => g.values.map((d) => ({ ...d, group: g.name })));
-  const dependencies = await multiSelect('Dependencies', deps);
-  const extract = (await select('Extract project?', [{ id: 'yes', name: 'Yes (--extract)' }, { id: 'no', name: 'No (zip)' }], 'yes')) === 'yes';
-  const location = await text('Output location', opts.artifactId);
+  const selectStep = (key, title, values, def) => () => select(title, values, def, opts[key]);
+  const textStep = (key, def, title = key) => () => text(title, def(), opts[key]);
+  const steps = [
+    ['type', selectStep('type', 'Project type', types, meta.type.default)],
+    ...['language', 'bootVersion', 'packaging', 'javaVersion'].map((k) => [k, selectStep(k, k, meta[k].values, meta[k].default)]),
+    ['groupId', textStep('groupId', () => meta.groupId.default)],
+    ['artifactId', textStep('artifactId', () => meta.artifactId.default)],
+    ['name', textStep('name', () => opts.artifactId)],
+    ['description', textStep('description', () => meta.description.default || 'Demo project for Spring Boot')],
+    ['packageName', textStep('packageName', () => `${opts.groupId}.${opts.artifactId}`.replace(/[^\w.]/g, ''))],
+    ['version', textStep('version', () => meta.version.default)],
+    ['dependencies', () => multiSelect('Dependencies', deps, opts.dependencies)],
+    ['extract', selectStep('extract', 'Extract project?', [{ id: 'yes', name: 'Yes (--extract)' }, { id: 'no', name: 'No (zip)' }], 'yes')],
+    ['location', textStep('location', () => opts.artifactId, 'Output location')],
+  ];
+  for (let i = 0; i < steps.length; ) {
+    const [key, ask] = steps[i];
+    const answer = await ask();
+    if (answer === BACK) {
+      i = Math.max(0, i - 1);
+    } else {
+      opts[key] = answer;
+      i++;
+    }
+  }
+  const { dependencies, location } = opts;
+  const extract = opts.extract === 'yes';
 
   process.stdin.setRawMode(false);
   process.stdin.pause();
