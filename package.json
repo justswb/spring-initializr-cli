@@ -1,13 +1,11 @@
 {
   "name": "spring-initializr-cli",
   "version": "1.0.0",
-  "description": "Interactively select Spring Initializr options and build a spring init command",
-  "bin": {
-    "spring-init": "spring-init.js"
-  },
+  "private": true,
+  "description": "Build and end-to-end tests for the spring-init Go CLI",
   "license": "MIT",
   "scripts": {
-    "build": "node --experimental-sea-config sea-config.json && node -e \"require('fs').copyFileSync(process.execPath, 'dist/spring-init.exe')\" && npx --yes postject dist/spring-init.exe NODE_SEA_BLOB dist/sea-prep.blob --sentinel-fuse NODE_SEA_FUSE_fce680ab2cc467b6e072b8b5df1996b2",
+    "build": "go build -trimpath -ldflags=\"-s -w\" -o dist/spring-init.exe .",
     "test": "node --test test/*.test.js"
   },
   "devDependencies": {

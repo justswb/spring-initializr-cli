@@ -1,6 +1,6 @@
 name: Release
 
-# Push a tag like v1.0.0 to build spring-init.exe and publish it on a GitHub release for that tag.
+# Push a tag like v1.0.0 to build spring-init.exe, test it, and publish it on a GitHub release for that tag.
 on:
   push:
     tags: ['v*']
@@ -14,14 +14,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
       - uses: actions/setup-node@v4
         with:
           node-version: 24
 
       - name: Build spring-init.exe
+        run: npm run build
+
+      - name: Test spring-init.exe
         run: |
-          mkdir dist -Force
-          npm run build
+          npm ci
+          npm test
 
       - name: Publish release
         uses: softprops/action-gh-release@v2

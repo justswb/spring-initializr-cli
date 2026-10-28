@@ -1,6 +1,6 @@
 // Black-box tests: run the CLI in a pseudo-terminal against a local metadata server, press keys,
-// and check what ends up on screen. Set SPRING_INIT_BIN to test a built binary (e.g. the .exe or a
-// Go build) instead of `node spring-init.js`.
+// and check what ends up on screen. Tests dist/spring-init.exe (`npm run build`) unless SPRING_INIT_BIN
+// points at another binary.
 const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -12,9 +12,7 @@ const pty = require('@lydell/node-pty');
 const { Terminal } = require('@xterm/headless');
 
 const ROOT = path.join(__dirname, '..');
-const BIN = process.env.SPRING_INIT_BIN
-  ? [path.resolve(process.env.SPRING_INIT_BIN)]
-  : [process.execPath, path.join(ROOT, 'spring-init.js')];
+const BIN = [path.resolve(ROOT, process.env.SPRING_INIT_BIN || 'dist/spring-init.exe')];
 const COLS = 300;
 const ROWS = 50;
 
