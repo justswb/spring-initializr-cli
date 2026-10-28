@@ -1,0 +1,7 @@
+{
+  "name": "spring-initializr-cli",
+  "version": "1.0.0",
+  "description": "Interactively select Spring Initializr options and build a spring init command",
+  "bin": { "spring-init": "spring-init.js" },
+  "license": "MIT"
+}
