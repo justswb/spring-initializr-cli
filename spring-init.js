@@ -1,12 +1,13 @@
 #!/usr/bin/env node
 // Interactively select Spring Initializr options and build a `spring init` command.
-// Usage: node spring-init.js [--target URL] [--run]
+// Usage: node spring-init.js [--target URL] [--dry-run]
+// Runs the built command by default; --dry-run only prints it.
 const readline = require('readline');
 const { spawnSync } = require('child_process');
 
 const args = process.argv.slice(2);
 const target = args.includes('--target') ? args[args.indexOf('--target') + 1] : 'https://start.spring.io';
-const run = args.includes('--run');
+const dryRun = args.includes('--dry-run');
 
 const ESC = '\x1b[';
 const dim = (s) => `${ESC}2m${s}${ESC}0m`;
@@ -223,7 +224,10 @@ async function main() {
 
   const line = cmd.map(quote).join(' ');
   console.log(green(line));
-  if (run) spawnSync(line, { stdio: 'inherit', shell: true });
+  if (dryRun) return;
+  const { status, error } = spawnSync(line, { stdio: 'inherit', shell: true });
+  if (error) throw error;
+  process.exitCode = status ?? 1;
 }
 
 main().catch((e) => {
