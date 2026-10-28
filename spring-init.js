@@ -12,34 +12,62 @@ const ESC = '\x1b[';
 const dim = (s) => `${ESC}2m${s}${ESC}0m`;
 const cyan = (s) => `${ESC}36m${s}${ESC}0m`;
 const green = (s) => `${ESC}32m${s}${ESC}0m`;
-const clear = () => process.stdout.write(`${ESC}2J${ESC}H`);
-const PAGE = Math.max(5, (process.stdout.rows || 24) - 8);
+const inverse = (s) => `${ESC}7m${s}${ESC}0m`;
+const PAGE = Math.max(3, Math.min(10, (process.stdout.rows || 24) - 8));
 const BACK = Symbol('back');
 let canGoBack = false; // set per step by main(); the first step has no previous step
 const backHint = () => (canGoBack ? dim('  esc: previous step') : '');
 
-// Runs a prompt: `render()` draws it, `onKey(str, key)` returns a value to resolve or undefined to keep going.
-// Esc resolves with BACK so the caller can return to the previous step.
-function prompt(render, onKey) {
+// Prompts are drawn in place below the current terminal output: each redraw moves the cursor
+// back up over the rows drawn last time and clears from there down.
+const strip = (s) => s.replace(/\x1b\[[0-9;]*m/g, '');
+const rowsOf = (lines) => lines.reduce((n, l) => n + Math.max(1, Math.ceil(strip(l).length / (process.stdout.columns || 80))), 0);
+let drawnRows = 0; // rows of the active prompt on screen
+const answeredRows = []; // rows of each answered step's summary line, erased again on going back
+
+function eraseUp(rows) {
+  if (rows > 0) process.stdout.write(`${ESC}${rows}A`);
+  process.stdout.write(`\r${ESC}0J`);
+}
+
+function draw(lines) {
+  eraseUp(Math.max(0, drawnRows - 1));
+  process.stdout.write(lines.join('\n'));
+  drawnRows = rowsOf(lines);
+}
+
+function exit(code) {
+  process.stdout.write(`${ESC}?25h`);
+  process.stdin.setRawMode(false);
+  process.exit(code);
+}
+
+// Runs a prompt: `render()` returns its lines, `onKey(str, key)` returns a value to resolve or undefined
+// to keep going, `summary(value)` is the line left on screen once answered.
+// Esc resolves with BACK, erasing the previous step's summary so it can be asked again.
+function prompt(title, render, onKey, summary) {
   return new Promise((resolve) => {
     const handler = (str, key = {}) => {
       if (key.ctrl && key.name === 'c') {
-        process.stdin.setRawMode(false);
-        process.stdout.write('\n');
-        process.exit(130);
+        draw([]);
+        exit(130);
       }
       if (key.name === 'escape' && !canGoBack) return;
       const result = key.name === 'escape' ? BACK : onKey(str, key);
-      if (result !== undefined) {
-        process.stdin.off('keypress', handler);
-        resolve(result);
+      if (result === undefined) return draw(render());
+      process.stdin.off('keypress', handler);
+      draw([]);
+      drawnRows = 0;
+      if (result === BACK) {
+        eraseUp(answeredRows.pop() || 0);
       } else {
-        clear();
-        render();
+        const line = `${green('✔')} ${title}: ${cyan(summary(result))}`;
+        process.stdout.write(line + '\n');
+        answeredRows.push(rowsOf([line]));
       }
+      resolve(result);
     };
-    clear();
-    render();
+    draw(render());
     process.stdin.on('keypress', handler);
   });
 }
@@ -52,32 +80,37 @@ function window(items, cursor) {
 function select(title, items, defaultId, current) {
   let cursor = Math.max(0, items.findIndex((i) => i.id === (current ?? defaultId)));
   return prompt(
+    title,
     () => {
-      console.log(cyan(`? ${title}`) + dim('  (↑/↓, enter)') + backHint());
       const { start, slice } = window(items, cursor);
-      slice.forEach((item, i) => {
-        const idx = start + i;
-        const mark = item.id === defaultId ? dim(' (default)') : '';
-        console.log(idx === cursor ? green(`❯ ${item.name}`) + mark : `  ${item.name}${mark}`);
-      });
+      return [
+        cyan(`? ${title}`) + dim('  (↑/↓, enter)') + backHint(),
+        ...slice.map((item, i) => {
+          const mark = item.id === defaultId ? dim(' (default)') : '';
+          return start + i === cursor ? green(`❯ ${item.name}`) + mark : `  ${item.name}${mark}`;
+        }),
+      ];
     },
     (str, key) => {
       if (key.name === 'up') cursor = (cursor - 1 + items.length) % items.length;
       else if (key.name === 'down') cursor = (cursor + 1) % items.length;
       else if (key.name === 'return') return items[cursor].id;
     },
+    (id) => items.find((i) => i.id === id).name,
   );
 }
 
 function text(title, def = '', current = '') {
   let value = current;
   return prompt(
-    () => process.stdout.write(cyan(`? ${title}`) + (def ? dim(` (${def})`) : '') + backHint() + '\n> ' + value),
+    title,
+    () => [cyan(`? ${title}`) + (def ? dim(` (${def})`) : '') + backHint(), `> ${value}${inverse(' ')}`],
     (str, key) => {
       if (key.name === 'return') return value.trim() || def;
       if (key.name === 'backspace') value = value.slice(0, -1);
       else if (str && !key.ctrl && str >= ' ') value += str;
     },
+    (v) => v || '-',
   );
 }
 
@@ -90,18 +123,21 @@ function multiSelect(title, items, current = []) {
     return items.filter((i) => !f || `${i.id} ${i.name} ${i.group}`.toLowerCase().includes(f));
   };
   return prompt(
+    title,
     () => {
       const list = visible();
-      console.log(cyan(`? ${title}`) + dim('  (type to filter, ↑/↓, space toggle, enter done)') + backHint());
-      console.log(`  filter: ${filter}${dim('_')}`);
-      console.log(`  selected: ${green([...chosen].join(', ') || '-')}\n`);
       const { start, slice } = window(list, cursor);
-      slice.forEach((item, i) => {
-        const box = chosen.has(item.id) ? green('◉') : '◯';
-        const line = `${box} ${item.name} ${dim(`[${item.id}] ${item.group}`)}`;
-        console.log(start + i === cursor ? green('❯ ') + line : '  ' + line);
-      });
-      if (!list.length) console.log(dim('  no match'));
+      return [
+        cyan(`? ${title}`) + dim('  (type to filter, ↑/↓, space toggle, enter done)') + backHint(),
+        `  filter: ${filter}${inverse(' ')}`,
+        `  selected: ${green([...chosen].join(', ') || '-')}`,
+        ...slice.map((item, i) => {
+          const box = chosen.has(item.id) ? green('◉') : '◯';
+          const line = `${box} ${item.name} ${dim(`[${item.id}] ${item.group}`)}`;
+          return start + i === cursor ? green('❯ ') + line : '  ' + line;
+        }),
+        ...(list.length ? [] : [dim('  no match')]),
+      ];
     },
     (str, key) => {
       const list = visible();
@@ -119,6 +155,7 @@ function multiSelect(title, items, current = []) {
         cursor = 0;
       }
     },
+    (ids) => ids.join(', ') || '-',
   );
 }
 
@@ -134,6 +171,7 @@ async function main() {
   if (!process.stdin.isTTY) throw new Error('An interactive terminal is required.');
   readline.emitKeypressEvents(process.stdin);
   process.stdin.setRawMode(true);
+  process.stdout.write(`${ESC}?25l`);
 
   const opts = {};
   const types = meta.type.values.filter((v) => v.action === '/starter.zip');
@@ -167,9 +205,9 @@ async function main() {
   const { dependencies, location } = opts;
   const extract = opts.extract === 'yes';
 
+  process.stdout.write(`${ESC}?25h\n`);
   process.stdin.setRawMode(false);
   process.stdin.pause();
-  clear();
 
   const flags = {
     type: '--type', language: '--language', bootVersion: '--boot-version', packaging: '--packaging',
